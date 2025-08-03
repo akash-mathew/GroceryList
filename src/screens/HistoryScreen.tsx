@@ -25,7 +25,7 @@ export default function HistoryScreen({ navigation }: any) {
             <Text style={styles.tileText}>{item}</Text>
           </TouchableOpacity>
         )}
-        ListEmptyComponent={<Text style={styles.emptyText}>No history yet.</Text>}
+        ListEmptyComponent={<Text style={styles.emptyText}>No grocery lists yet.</Text>}
       />
       <TouchableOpacity style={styles.addBtn} onPress={() => setCalendarVisible(true)}>
         <Text style={styles.addBtnText}>Add New List</Text>
@@ -59,5 +59,5 @@ const styles = StyleSheet.create({
   tileText: { fontSize: 18, color: PRIMARY, fontWeight: 'bold' },
   addBtn: { backgroundColor: PRIMARY, borderRadius: 10, paddingVertical: 16, alignItems: 'center', marginTop: 24 },
   addBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 18, letterSpacing: 1 },
-  emptyText: { color: '#888', textAlign: 'center', marginTop: 32, fontSize: 16 },
+  emptyText: { color: '#444', textAlign: 'center', marginTop: 32, fontSize: 16 },
 });
