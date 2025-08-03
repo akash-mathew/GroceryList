@@ -170,10 +170,6 @@ export default function DashboardScreen() {
   return (
     <ScrollView style={{ flex: 1, backgroundColor: APP_BG }} contentContainerStyle={{ paddingBottom: 32 }}>
       <View style={styles.container}>
-        {/* Test Indicator - Shows current version to verify latest changes in release builds */}
-        <View style={styles.versionIndicator}>
-          <Text style={styles.versionText}>Dashboard v1.0.2 (Build 3) ✓</Text>
-        </View>
         <View style={[styles.filterRow, { marginTop: 32 }]}>
           {TIME_FILTERS.map(f => (
             <TouchableOpacity
@@ -348,21 +344,6 @@ const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: APP_BG, padding: 16 },
   title: { fontSize: 28, fontWeight: 'bold', marginBottom: 16, color: PRIMARY },
   header: { fontSize: 32, fontWeight: 'bold', color: PRIMARY, letterSpacing: 1, marginBottom: 0, marginTop: 8, textAlign: 'left' },
-  versionIndicator: { 
-    backgroundColor: '#e6f3ff', 
-    borderRadius: 8, 
-    padding: 8, 
-    marginBottom: 16, 
-    borderWidth: 1, 
-    borderColor: PRIMARY,
-    alignItems: 'center'
-  },
-  versionText: { 
-    color: PRIMARY, 
-    fontSize: 12, 
-    fontWeight: 'bold',
-    letterSpacing: 0.5
-  },
   filterRow: { flexDirection: 'row', marginBottom: 10, justifyContent: 'center' },
   filterBtn: { padding: 8, borderRadius: 8, backgroundColor: '#eee', marginRight: 8 },
   filterBtnActive: { backgroundColor: PRIMARY },

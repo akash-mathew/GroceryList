@@ -35,4 +35,22 @@ yarn-error.*
 
 # typescript
 *.tsbuildinfo
-android/ 
+android/
+
+# Android build outputs and APKs
+android/app/build/
+android/app/build/outputs/
+android/app/build/outputs/apk/
+*.apk
+*.apks
+*.aab
+
+# VSCode
+.vscode/
+
+# Expo shared
+.expo-shared/
+
+# Misc
+Thumbs.db
+*.log
