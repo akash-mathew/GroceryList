@@ -4,6 +4,7 @@ import { NavigationContainer } from '@react-navigation/native';
 import GroceryStack from './GroceryStack';
 import SearchScreen from '../screens/SearchScreen';
 import InsightsScreen from '../screens/DashboardScreen';
+import RemindersScreen from '../screens/RemindersScreen';
 import { Ionicons, FontAwesome } from '@expo/vector-icons';
 
 const Tab = createBottomTabNavigator();
@@ -21,6 +22,8 @@ export default function AppTabNavigator() {
               return <Ionicons name="time" size={size} color={color} />;
             if (route.name === 'Insights')
               return <FontAwesome name="bar-chart" size={size} color={color} />;
+            if (route.name === 'Reminders')
+              return <Ionicons name="notifications" size={size} color={color} />;
             return null;
           },
           tabBarActiveTintColor: '#111',
@@ -41,6 +44,11 @@ export default function AppTabNavigator() {
         <Tab.Screen
           name="Insights"
           component={InsightsScreen}
+          options={{ headerShown: false }}
+        />
+        <Tab.Screen
+          name="Reminders"
+          component={RemindersScreen}
           options={{ headerShown: false }}
         />
       </Tab.Navigator>

@@ -10,7 +10,7 @@ const BORDER = '#d1d5db';
 const SHADOW = '#b3c6e6';
 
 export default function SearchScreen() {
-  const { items, shops } = useGrocery();
+  const { items, shops, purchasedItems } = useGrocery();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<{ type: 'item' | 'shop'; value: string }[]>([]);
   const [selected, setSelected] = useState<{ type: 'item' | 'shop'; value: string } | null>(null);
@@ -18,18 +18,20 @@ export default function SearchScreen() {
 
   const handleSearch = () => {
     if (!query.trim()) return;
-    const itemResults = Array.from(new Set(items.map(i => i.name)))
+    // Only include purchased items in search results
+    const purchasedItems_filtered = items.filter(item => purchasedItems[item.id] && purchasedItems[item.id] > 0);
+    const itemResults = Array.from(new Set(purchasedItems_filtered.map(i => i.name)))
       .filter(name => name && name.toLowerCase().includes(query.toLowerCase()))
       .map(name => ({ type: 'item' as const, value: name }));
     
-    // Use dedicated shops array for shop results, with fallback to items
+    // Use dedicated shops array for shop results, with fallback to purchased items
     let shopResults = shops
       .filter(s => s.name && s.name.toLowerCase().includes(query.toLowerCase()))
       .map(s => ({ type: 'shop' as const, value: s.name }));
     
-    // Fallback: also check shops from items if shops array is empty or incomplete
+    // Fallback: also check shops from purchased items if shops array is empty or incomplete
     if (shopResults.length === 0) {
-      const shopNamesFromItems = Array.from(new Set(items.map(i => i.shop).filter(Boolean)))
+      const shopNamesFromItems = Array.from(new Set(purchasedItems_filtered.map(i => i.shop).filter(Boolean)))
         .filter(shopName => shopName && shopName.toLowerCase().includes(query.toLowerCase()))
         .map(shopName => ({ type: 'shop' as const, value: shopName }));
       shopResults = shopNamesFromItems;
@@ -45,19 +47,20 @@ export default function SearchScreen() {
       setSuggestions([]);
       return;
     }
-    // Only suggest from user history
-    const itemSuggestions = Array.from(new Set(items.map(i => i.name)))
+    // Only suggest from purchased items history
+    const purchasedItems_filtered = items.filter(item => purchasedItems[item.id] && purchasedItems[item.id] > 0);
+    const itemSuggestions = Array.from(new Set(purchasedItems_filtered.map(i => i.name)))
       .filter(name => name && name.toLowerCase().includes(text.toLowerCase()))
       .map(name => ({ type: 'item' as const, value: name }));
     
-    // Use dedicated shops array for shop suggestions, with fallback to items
+    // Use dedicated shops array for shop suggestions, with fallback to purchased items
     let shopSuggestions = shops
       .filter(s => s.name && s.name.toLowerCase().includes(text.toLowerCase()))
       .map(s => ({ type: 'shop' as const, value: s.name }));
     
-    // Fallback: also check shops from items if shops array is empty or incomplete
+    // Fallback: also check shops from purchased items if shops array is empty or incomplete
     if (shopSuggestions.length === 0) {
-      const shopNamesFromItems = Array.from(new Set(items.map(i => i.shop).filter(Boolean)))
+      const shopNamesFromItems = Array.from(new Set(purchasedItems_filtered.map(i => i.shop).filter(Boolean)))
         .filter(shopName => shopName && shopName.toLowerCase().includes(text.toLowerCase()))
         .map(shopName => ({ type: 'shop' as const, value: shopName }));
       shopSuggestions = shopNamesFromItems;
@@ -104,7 +107,9 @@ export default function SearchScreen() {
       {/* Table for selected item or shop */}
       {selected && (
         <View style={styles.tableContainer}>
-          <Text style={styles.tableHeaderTitle}>{selected.type === 'item' ? `Item: ${selected.value}` : `Shop: ${selected.value}`}</Text>
+          <Text style={styles.tableHeaderTitle}>
+            {selected.type === 'item' ? `Item: ${selected.value}` : `Shop: ${selected.value}`}
+          </Text>
           <View style={styles.tableHeaderRow}>
             <Text style={styles.tableHeaderCell}>Date</Text>
             {selected.type === 'shop' && <Text style={styles.tableHeaderCell}>Item</Text>}
@@ -115,8 +120,8 @@ export default function SearchScreen() {
           </View>
           <FlatList
             data={selected.type === 'item'
-              ? items.filter(i => i.name && i.name.trim().toLowerCase() === selected.value.trim().toLowerCase())
-              : items.filter(i => i.shop && i.shop.trim().toLowerCase() === selected.value.trim().toLowerCase())}
+              ? items.filter(i => purchasedItems[i.id] && purchasedItems[i.id] > 0 && i.name && i.name.trim().toLowerCase() === selected.value.trim().toLowerCase())
+              : items.filter(i => purchasedItems[i.id] && purchasedItems[i.id] > 0 && i.shop && i.shop.trim().toLowerCase() === selected.value.trim().toLowerCase())}
             keyExtractor={item => item.id}
             renderItem={({ item }) => (
               <View style={styles.tableRowStyled}>
@@ -128,7 +133,11 @@ export default function SearchScreen() {
                 {selected.type === 'item' && <Text style={styles.tableCellStyled}>{item.shop}</Text>}
               </View>
             )}
-            ListEmptyComponent={<Text style={styles.emptyText}>No {selected.type === 'item' ? 'item' : 'shop'} history found for "{selected.value}".</Text>}
+            ListEmptyComponent={
+              <Text style={styles.emptyText}>
+                No {selected.type === 'item' ? 'item' : 'shop'} history found for "{selected.value}".
+              </Text>
+            }
           />
         </View>
       )}

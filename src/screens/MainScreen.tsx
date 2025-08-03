@@ -31,7 +31,7 @@ const COMMON_GROCERY_ITEMS = [
 
 export default function MainScreen({ initialDate }: { initialDate?: string }) {
   const today = dayjs().format('YYYY-MM-DD');
-  const { items, shops, getItemsByDate, addItem, deleteItem, updateItem } = useGrocery();
+  const { items, shops, getItemsByDate, addItem, deleteItem, updateItem, purchasedItems, setPurchasedItems, scheduleRemindersForPurchasedItems } = useGrocery();
   const [selectedDate, setSelectedDate] = useState(initialDate || today);
   const [name, setName] = useState('');
   const [quantity, setQuantity] = useState('1');
@@ -106,8 +106,8 @@ export default function MainScreen({ initialDate }: { initialDate?: string }) {
   // Share to WhatsApp
   const shareToWhatsApp = async () => {
     // Group items by checked/unchecked
-    const unchecked = groceryItems.filter(i => !checkedItems[i.id]);
-    const checked = groceryItems.filter(i => checkedItems[i.id]);
+    const unchecked = groceryItems.filter(i => !purchasedItems[i.id] || purchasedItems[i.id] === 0);
+    const checked = groceryItems.filter(i => purchasedItems[i.id] && purchasedItems[i.id] > 0);
     // Format unchecked items normally
     const uncheckedList = unchecked.map(i => `• ${i.name} ${i.quantity} ${i.unit}${i.shop ? ' @' + i.shop : ''}`).join('\n');
     // Format checked items with strikethrough using WhatsApp markdown (~text~)
@@ -169,12 +169,9 @@ export default function MainScreen({ initialDate }: { initialDate?: string }) {
     setName(''); setQuantity('1'); setUnit('kg'); setShop('');
   };
 
-  // Add checked state to items
-  const [purchasedItems, setPurchasedItems] = useState<{ [id: string]: boolean }>({});
-
   // Split items into unpurchased and purchased
-  const unpurchasedItems = groceryItems.filter(i => !purchasedItems[i.id]);
-  const purchasedItemsList = groceryItems.filter(i => purchasedItems[i.id]);
+  const unpurchasedItems = groceryItems.filter(i => !purchasedItems[i.id] || purchasedItems[i.id] === 0);
+  const purchasedItemsList = groceryItems.filter(i => purchasedItems[i.id] && purchasedItems[i.id] > 0);
 
   return (
     <View style={styles.overlay}>
@@ -185,15 +182,19 @@ export default function MainScreen({ initialDate }: { initialDate?: string }) {
           ListHeaderComponent={renderHeader}
           renderItem={({ item }) => (
             <View style={styles.listItem}>
-              <TouchableOpacity onPress={() => setPurchasedItems(c => ({ ...c, [item.id]: true }))} style={styles.checkCircle}>
-                <Ionicons name={purchasedItems[item.id] ? 'checkmark-circle' : 'ellipse-outline'} size={24} color={purchasedItems[item.id] ? '#27ae60' : '#bbb'} />
+              <TouchableOpacity onPress={() => {
+                const now = Date.now();
+                setPurchasedItems(c => ({ ...c, [item.id]: now }));
+                scheduleRemindersForPurchasedItems(item.id, now);
+              }} style={styles.checkCircle}>
+                <Ionicons name={purchasedItems[item.id] && purchasedItems[item.id] > 0 ? 'checkmark-circle' : 'ellipse-outline'} size={24} color={purchasedItems[item.id] && purchasedItems[item.id] > 0 ? '#27ae60' : '#bbb'} />
               </TouchableOpacity>
               <Text
-                style={[{ fontSize: 16, flexShrink: 1, flex: 1 }, purchasedItems[item.id] && { textDecorationLine: 'line-through', color: '#aaa' }]}
+                style={[{ fontSize: 16, flexShrink: 1, flex: 1 }, (purchasedItems[item.id] && purchasedItems[item.id] > 0) && { textDecorationLine: 'line-through', color: '#aaa' }]}
                 numberOfLines={4}
                 ellipsizeMode="tail"
               >
-                {item.name} - {item.quantity} {item.unit} {item.shop ? `@ ${item.shop}` : ''}
+                {item.name} - {item.quantity} {item.unit}{item.shop ? ` @ ${item.shop}` : ''}
               </Text>
               <View style={{ flexDirection: 'row', marginLeft: 8 }}>
                 <TouchableOpacity onPress={() => {
@@ -221,7 +222,7 @@ export default function MainScreen({ initialDate }: { initialDate?: string }) {
                   <Text style={styles.checkedHeader}>Purchased Items</Text>
                   {purchasedItemsList.map(item => (
                     <View style={styles.listItem} key={item.id}>
-                      <TouchableOpacity onPress={() => setPurchasedItems(c => ({ ...c, [item.id]: false }))} style={styles.checkCircle}>
+                      <TouchableOpacity onPress={() => setPurchasedItems(c => ({ ...c, [item.id]: 0 }))} style={styles.checkCircle}>
                         <Ionicons name={'checkmark-circle'} size={24} color={'#27ae60'} />
                       </TouchableOpacity>
                       <Text
@@ -229,7 +230,7 @@ export default function MainScreen({ initialDate }: { initialDate?: string }) {
                         numberOfLines={4}
                         ellipsizeMode="tail"
                       >
-                        {item.name} - {item.quantity} {item.unit} {item.shop ? `@ ${item.shop}` : ''}
+                        {item.name} - {item.quantity} {item.unit}{item.shop ? ` @ ${item.shop}` : ''}
                       </Text>
                       <View style={{ flexDirection: 'row', marginLeft: 8 }}>
                         <TouchableOpacity onPress={() => {

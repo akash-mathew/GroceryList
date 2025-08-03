@@ -29,6 +29,12 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
+    },
+    "plugins": [
+      "expo-dev-client"
+    ],
+    "developmentClient": {
+      "silentLaunch": true
     }
   }
 }
