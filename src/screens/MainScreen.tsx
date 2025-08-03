@@ -170,26 +170,26 @@ export default function MainScreen({ initialDate }: { initialDate?: string }) {
   };
 
   // Add checked state to items
-  const [checkedItems, setCheckedItems] = useState<{ [id: string]: boolean }>({});
+  const [purchasedItems, setPurchasedItems] = useState<{ [id: string]: boolean }>({});
 
-  // Split items into unchecked and checked
-  const uncheckedItems = groceryItems.filter(i => !checkedItems[i.id]);
-  const checkedItemsList = groceryItems.filter(i => checkedItems[i.id]);
+  // Split items into unpurchased and purchased
+  const unpurchasedItems = groceryItems.filter(i => !purchasedItems[i.id]);
+  const purchasedItemsList = groceryItems.filter(i => purchasedItems[i.id]);
 
   return (
     <View style={styles.overlay}>
       <View style={styles.container}>
         <FlatList
-          data={uncheckedItems}
+          data={unpurchasedItems}
           keyExtractor={item => item.id}
           ListHeaderComponent={renderHeader}
           renderItem={({ item }) => (
             <View style={styles.listItem}>
-              <TouchableOpacity onPress={() => setCheckedItems(c => ({ ...c, [item.id]: true }))} style={styles.checkCircle}>
-                <Ionicons name={checkedItems[item.id] ? 'checkmark-circle' : 'ellipse-outline'} size={24} color={checkedItems[item.id] ? '#27ae60' : '#bbb'} />
+              <TouchableOpacity onPress={() => setPurchasedItems(c => ({ ...c, [item.id]: true }))} style={styles.checkCircle}>
+                <Ionicons name={purchasedItems[item.id] ? 'checkmark-circle' : 'ellipse-outline'} size={24} color={purchasedItems[item.id] ? '#27ae60' : '#bbb'} />
               </TouchableOpacity>
               <Text
-                style={[{ fontSize: 16, flexShrink: 1, flex: 1 }, checkedItems[item.id] && { textDecorationLine: 'line-through', color: '#aaa' }]}
+                style={[{ fontSize: 16, flexShrink: 1, flex: 1 }, purchasedItems[item.id] && { textDecorationLine: 'line-through', color: '#aaa' }]}
                 numberOfLines={4}
                 ellipsizeMode="tail"
               >
@@ -209,17 +209,19 @@ export default function MainScreen({ initialDate }: { initialDate?: string }) {
             </View>
           )}
           ListEmptyComponent={
-            <Text style={styles.emptyText}>No items in the list</Text>
+            (unpurchasedItems.length === 0 && purchasedItemsList.length === 0) ? (
+              <Text style={styles.emptyText}>No items in the list</Text>
+            ) : null
           }
           ListFooterComponent={
             <>
-              {/* Checked items group above Add Item button */}
-              {checkedItemsList.length > 0 && (
+              {/* Purchased items group above Add Item button */}
+              {purchasedItemsList.length > 0 && (
                 <View style={styles.checkedGroup}>
-                  <Text style={styles.checkedHeader}>Checked Items</Text>
-                  {checkedItemsList.map(item => (
+                  <Text style={styles.checkedHeader}>Purchased Items</Text>
+                  {purchasedItemsList.map(item => (
                     <View style={styles.listItem} key={item.id}>
-                      <TouchableOpacity onPress={() => setCheckedItems(c => ({ ...c, [item.id]: false }))} style={styles.checkCircle}>
+                      <TouchableOpacity onPress={() => setPurchasedItems(c => ({ ...c, [item.id]: false }))} style={styles.checkCircle}>
                         <Ionicons name={'checkmark-circle'} size={24} color={'#27ae60'} />
                       </TouchableOpacity>
                       <Text

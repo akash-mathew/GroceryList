@@ -15,7 +15,7 @@ export default function SearchAnalyticsScreen() {
         tabBarStyle: { backgroundColor: '#f0f4fa' },
       }}
     >
-      <TopTab.Screen name="Search" component={SearchScreen} />
+      <TopTab.Screen name="Purchase History" component={SearchScreen} />
       <TopTab.Screen name="Analytics" component={AnalyticsScreen} />
     </TopTab.Navigator>
   );

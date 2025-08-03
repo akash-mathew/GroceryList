@@ -28,7 +28,7 @@ const safeConsole = {
   }
 };
 
-export default function DashboardScreen() {
+export default function InsightsScreen() {
   const { items } = useGrocery();
   const now = new Date();
   const [timeFilter, setTimeFilter] = useState('week');

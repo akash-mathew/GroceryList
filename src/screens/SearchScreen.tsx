@@ -75,17 +75,17 @@ export default function SearchScreen() {
 
   return (
     <View style={styles.container}>
-      <View style={[styles.searchBarRow, { marginTop: 32 }]}>
+      <View style={[styles.searchBarRow, { marginTop: 32 }]}> 
         <TextInput
           style={styles.input}
-          placeholder="Search for item or shop..."
+          placeholder="Find past items or shops..."
           placeholderTextColor="#666"
           value={query}
           onChangeText={handleInputChange}
           onSubmitEditing={handleSearch}
         />
         <TouchableOpacity onPress={handleSearch} style={styles.searchBtn}>
-          <Text style={{ color: '#fff' }}>Search</Text>
+          <Text style={{ color: '#fff' }}>Find</Text>
         </TouchableOpacity>
       </View>
       {/* Suggestions FlatList (for { type, value }) */}

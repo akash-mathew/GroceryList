@@ -43,7 +43,7 @@ class ErrorBoundary extends React.Component<Props, State> {
         <View style={styles.container}>
           <Text style={styles.title}>Something went wrong</Text>
           <Text style={styles.message}>
-            The dashboard encountered an error. Please try again.
+            The insights screen encountered an error. Please try again.
           </Text>
           <TouchableOpacity style={styles.button} onPress={this.resetError}>
             <Text style={styles.buttonText}>Try Again</Text>
