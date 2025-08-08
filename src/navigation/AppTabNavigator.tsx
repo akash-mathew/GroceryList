@@ -1,29 +1,26 @@
-import React from 'react';
+import React, { forwardRef } from 'react';
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { NavigationContainer } from '@react-navigation/native';
 import GroceryStack from './GroceryStack';
 import SearchScreen from '../screens/SearchScreen';
-import InsightsScreen from '../screens/DashboardScreen';
-import RemindersScreen from '../screens/RemindersScreen';
+import DashboardScreen from '../screens/DashboardScreen';
 import { Ionicons, FontAwesome } from '@expo/vector-icons';
 
 const Tab = createBottomTabNavigator();
 
-export default function AppTabNavigator() {
+const AppTabNavigator = forwardRef<any, {}>((props, ref) => {
   return (
-    <NavigationContainer>
+    <NavigationContainer ref={ref}>
       <Tab.Navigator
         id={undefined}
         screenOptions={({ route }) => ({
           tabBarIcon: ({ color, size }) => {
             if (route.name === 'Grocery List')
               return <Ionicons name="cart" size={size} color={color} />;
-            if (route.name === 'Purchase History')
-              return <Ionicons name="time" size={size} color={color} />;
-            if (route.name === 'Insights')
+            if (route.name === 'Search')
+              return <Ionicons name="search" size={size} color={color} />;
+            if (route.name === 'Dashboard')
               return <FontAwesome name="bar-chart" size={size} color={color} />;
-            if (route.name === 'Reminders')
-              return <Ionicons name="notifications" size={size} color={color} />;
             return null;
           },
           tabBarActiveTintColor: '#111',
@@ -37,21 +34,18 @@ export default function AppTabNavigator() {
           options={{ headerShown: false }}
         />
         <Tab.Screen
-          name="Purchase History"
+          name="Search"
           component={SearchScreen}
           options={{ headerShown: false }}
         />
         <Tab.Screen
-          name="Insights"
-          component={InsightsScreen}
-          options={{ headerShown: false }}
-        />
-        <Tab.Screen
-          name="Reminders"
-          component={RemindersScreen}
+          name="Dashboard"
+          component={DashboardScreen}
           options={{ headerShown: false }}
         />
       </Tab.Navigator>
     </NavigationContainer>
   );
-}
+});
+
+export default AppTabNavigator;

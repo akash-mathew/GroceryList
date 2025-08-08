@@ -6,13 +6,19 @@ import { subMonths, format } from 'date-fns';
 
 export default function AnalyticsScreen() {
   const { items } = useGrocery();
+  
   // Group by month for last 6 months
-  const months = Array.from({ length: 6 }, (_, i) => format(subMonths(new Date(), 5 - i), 'yyyy-MM'));
+  const months = useMemo(() => 
+    Array.from({ length: 6 }, (_, i) => format(subMonths(new Date(), 5 - i), 'yyyy-MM')), 
+    []
+  );
+  
   const data = useMemo(() => {
-    return months.map(month =>
-      items.filter(item => item.date.startsWith(month)).length
-    );
-  }, [items]);
+    return months.map(month => {
+      const count = items.filter(item => item.date && item.date.startsWith(month)).length;
+      return count;
+    });
+  }, [items, months]);
 
   return (
     <View style={styles.container}>
@@ -20,7 +26,7 @@ export default function AnalyticsScreen() {
       <BarChart
         data={{
           labels: months.map(m => m.slice(2)),
-          datasets: [{ data }],
+          datasets: [{ data: data.length > 0 ? data : [0] }],
         }}
         width={Dimensions.get('window').width - 32}
         height={220}

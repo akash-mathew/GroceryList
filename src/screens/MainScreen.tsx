@@ -81,12 +81,8 @@ export default function MainScreen({ initialDate }: { initialDate?: string }) {
       setShopSuggestions([]);
       return;
     }
-    // Get shops from both the shops array and items array for better coverage
-    const shopsFromArray = shops.map(s => s.name).filter(Boolean);
-    const shopsFromItems = Array.from(new Set(items.map(i => i.shop).filter(Boolean)));
-    const allShops = Array.from(new Set([...shopsFromArray, ...shopsFromItems]));
-    
-    const filteredShops = allShops.filter(s => s && s.toLowerCase().includes(text.toLowerCase()));
+    const originalShops = Array.from(new Set(items.map(i => i.shop).filter(Boolean)));
+    const filteredShops = originalShops.filter(s => s && s.toLowerCase().includes(text.toLowerCase()));
     setShopSuggestions(filteredShops);
   };
 
@@ -106,8 +102,8 @@ export default function MainScreen({ initialDate }: { initialDate?: string }) {
   // Share to WhatsApp
   const shareToWhatsApp = async () => {
     // Group items by checked/unchecked
-    const unchecked = groceryItems.filter(i => !purchasedItems[i.id] || purchasedItems[i.id] === 0);
-    const checked = groceryItems.filter(i => purchasedItems[i.id] && purchasedItems[i.id] > 0);
+    const unchecked = groceryItems.filter(i => !purchasedItems[i.name]);
+    const checked = groceryItems.filter(i => purchasedItems[i.name]);
     // Format unchecked items normally
     const uncheckedList = unchecked.map(i => `• ${i.name} ${i.quantity} ${i.unit}${i.shop ? ' @' + i.shop : ''}`).join('\n');
     // Format checked items with strikethrough using WhatsApp markdown (~text~)
@@ -169,32 +165,31 @@ export default function MainScreen({ initialDate }: { initialDate?: string }) {
     setName(''); setQuantity('1'); setUnit('kg'); setShop('');
   };
 
-  // Split items into unpurchased and purchased
-  const unpurchasedItems = groceryItems.filter(i => !purchasedItems[i.id] || purchasedItems[i.id] === 0);
-  const purchasedItemsList = groceryItems.filter(i => purchasedItems[i.id] && purchasedItems[i.id] > 0);
+  // Split items into unchecked and checked using purchasedItems
+  const uncheckedItems = groceryItems.filter(i => !purchasedItems[i.name]);
+  const checkedItemsList = groceryItems.filter(i => purchasedItems[i.name]);
 
   return (
     <View style={styles.overlay}>
       <View style={styles.container}>
         <FlatList
-          data={unpurchasedItems}
+          data={uncheckedItems}
           keyExtractor={item => item.id}
           ListHeaderComponent={renderHeader}
           renderItem={({ item }) => (
             <View style={styles.listItem}>
               <TouchableOpacity onPress={() => {
-                const now = Date.now();
-                setPurchasedItems(c => ({ ...c, [item.id]: now }));
-                scheduleRemindersForPurchasedItems(item.id, now);
+                setPurchasedItems(c => ({ ...c, [item.name]: selectedDate }));
+                scheduleRemindersForPurchasedItems(item.id, selectedDate);
               }} style={styles.checkCircle}>
-                <Ionicons name={purchasedItems[item.id] && purchasedItems[item.id] > 0 ? 'checkmark-circle' : 'ellipse-outline'} size={24} color={purchasedItems[item.id] && purchasedItems[item.id] > 0 ? '#27ae60' : '#bbb'} />
+                <Ionicons name={purchasedItems[item.name] ? 'checkmark-circle' : 'ellipse-outline'} size={24} color={purchasedItems[item.name] ? '#27ae60' : '#bbb'} />
               </TouchableOpacity>
               <Text
-                style={[{ fontSize: 16, flexShrink: 1, flex: 1 }, (purchasedItems[item.id] && purchasedItems[item.id] > 0) && { textDecorationLine: 'line-through', color: '#aaa' }]}
+                style={[{ fontSize: 16, flexShrink: 1, flex: 1 }, purchasedItems[item.name] && { textDecorationLine: 'line-through', color: '#aaa' }]}
                 numberOfLines={4}
                 ellipsizeMode="tail"
               >
-                {item.name} - {item.quantity} {item.unit}{item.shop ? ` @ ${item.shop}` : ''}
+                {item.name} - {item.quantity} {item.unit} {item.shop ? `@ ${item.shop}` : ''}
               </Text>
               <View style={{ flexDirection: 'row', marginLeft: 8 }}>
                 <TouchableOpacity onPress={() => {
@@ -210,19 +205,21 @@ export default function MainScreen({ initialDate }: { initialDate?: string }) {
             </View>
           )}
           ListEmptyComponent={
-            (unpurchasedItems.length === 0 && purchasedItemsList.length === 0) ? (
-              <Text style={styles.emptyText}>No items in the list</Text>
-            ) : null
+            <Text style={styles.emptyText}>No items in the list</Text>
           }
           ListFooterComponent={
             <>
-              {/* Purchased items group above Add Item button */}
-              {purchasedItemsList.length > 0 && (
+              {/* Checked items group above Add Item button */}
+              {checkedItemsList.length > 0 && (
                 <View style={styles.checkedGroup}>
-                  <Text style={styles.checkedHeader}>Purchased Items</Text>
-                  {purchasedItemsList.map(item => (
+                  <Text style={styles.checkedHeader}>Checked Items</Text>
+                  {checkedItemsList.map(item => (
                     <View style={styles.listItem} key={item.id}>
-                      <TouchableOpacity onPress={() => setPurchasedItems(c => ({ ...c, [item.id]: 0 }))} style={styles.checkCircle}>
+                      <TouchableOpacity onPress={() => setPurchasedItems(c => {
+                        const newPurchased = { ...c };
+                        delete newPurchased[item.name];
+                        return newPurchased;
+                      })} style={styles.checkCircle}>
                         <Ionicons name={'checkmark-circle'} size={24} color={'#27ae60'} />
                       </TouchableOpacity>
                       <Text
@@ -230,7 +227,7 @@ export default function MainScreen({ initialDate }: { initialDate?: string }) {
                         numberOfLines={4}
                         ellipsizeMode="tail"
                       >
-                        {item.name} - {item.quantity} {item.unit}{item.shop ? ` @ ${item.shop}` : ''}
+                        {item.name} - {item.quantity} {item.unit} {item.shop ? `@ ${item.shop}` : ''}
                       </Text>
                       <View style={{ flexDirection: 'row', marginLeft: 8 }}>
                         <TouchableOpacity onPress={() => {
@@ -285,7 +282,6 @@ export default function MainScreen({ initialDate }: { initialDate?: string }) {
               <TextInput
                 style={[styles.input, { color: '#000' }]}
                 placeholder="Item name"
-                placeholderTextColor="#666"
                 value={editModalId ? editForm[editModalId]?.name || '' : name}
                 onChangeText={editModalId ? (text => setEditForm(f => ({ ...f, [editModalId]: { ...f[editModalId], name: text } }))) : handleNameChange}
               />
@@ -303,7 +299,6 @@ export default function MainScreen({ initialDate }: { initialDate?: string }) {
               <TextInput
                 style={[styles.input, { color: '#000' }]}
                 placeholder="Qty"
-                placeholderTextColor="#666"
                 value={editModalId ? editForm[editModalId]?.quantity || '' : quantity}
                 onChangeText={editModalId ? (text => setEditForm(f => ({ ...f, [editModalId]: { ...f[editModalId], quantity: text } }))) : setQuantity}
                 keyboardType="numeric"
@@ -321,7 +316,6 @@ export default function MainScreen({ initialDate }: { initialDate?: string }) {
               <TextInput
                 style={[styles.input, { color: '#000' }]}
                 placeholder="Shop (optional)"
-                placeholderTextColor="#666"
                 value={editModalId ? editForm[editModalId]?.shop || '' : shop}
                 onChangeText={editModalId ? (text => setEditForm(f => ({ ...f, [editModalId]: { ...f[editModalId], shop: text } }))) : handleShopChange}
               />

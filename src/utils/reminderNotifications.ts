@@ -1,6 +1,6 @@
 import * as Notifications from 'expo-notifications';
-import Constants from 'expo-constants';
 import { ProductReminder } from '../context/GroceryContext';
+import { debugLogger } from './debugLogger';
 
 // Configure notification behavior
 Notifications.setNotificationHandler({
@@ -8,134 +8,77 @@ Notifications.setNotificationHandler({
     shouldShowAlert: true,
     shouldPlaySound: true,
     shouldSetBadge: true,
+    shouldShowBanner: true,
+    shouldShowList: true,
   }),
 });
 
-export async function scheduleProductReminder(reminder: ProductReminder, purchaseTimestamp: number, quantityPurchased: number) {
+export async function scheduleProductReminder(
+  reminder: ProductReminder, 
+  purchaseTimestamp: number, 
+  quantityPurchased: number
+) {
   try {
-    console.log('=== SCHEDULING REMINDER ===');
-    console.log('Product:', reminder.product);
-    console.log('Purchase timestamp:', purchaseTimestamp, new Date(purchaseTimestamp));
-    console.log('Interval:', reminder.interval);
-    console.log('Quantity purchased:', quantityPurchased);
-    
-    // Calculate interval in ms
-    const days = reminder.interval.days || 0;
-    const hours = reminder.interval.hours || 0;
-    const minutes = reminder.interval.minutes || 0;
-    const baseQuantity = reminder.quantity;
-    const totalMs = (
-      ((days * 24 * 60) + (hours * 60) + minutes) * 60 * 1000
-    ) * (quantityPurchased / baseQuantity);
-    const triggerDate = new Date(purchaseTimestamp + totalMs);
+    debugLogger.log('=== SCHEDULING REMINDER ===');
+    debugLogger.log(`Product: ${reminder.product}`);
+    debugLogger.log(`Purchase: ${new Date(purchaseTimestamp).toLocaleString()}`);
+    debugLogger.log(`Interval: ${reminder.interval.days} days`);
+    debugLogger.log(`Quantity purchased: ${quantityPurchased}`);
 
-    console.log('Calculated interval (ms):', totalMs);
-    console.log('Trigger date:', triggerDate);
-    console.log('Current time:', new Date());
-    console.log('Minutes until trigger:', (triggerDate.getTime() - Date.now()) / (1000 * 60));
-
-    // Check permissions
-    const { status } = await Notifications.requestPermissionsAsync();
-    console.log('Notification permission status:', status);
-    
+    // Check notification permissions
+    const { status } = await Notifications.getPermissionsAsync();
     if (status !== 'granted') {
-      console.error('Notification permissions not granted!');
+      debugLogger.log('❌ Notifications not permitted');
       return;
     }
 
-    const notificationResult = await Notifications.scheduleNotificationAsync({
-      content: {
-        title: 'Grocery Reminder',
-        body: `Time to buy ${reminder.product} again!`,
-        data: { product: reminder.product },
-      },
-      trigger: { type: 'date' as any, date: triggerDate, repeats: false },
-    });
+    // Calculate trigger time - now simplified to days only
+    const days = reminder.interval.days;
+    const triggerTimeMs = purchaseTimestamp + (days * 24 * 60 * 60 * 1000);
+    const now = Date.now();
     
-    console.log('Notification scheduled successfully:', notificationResult);
-    console.log('=== END SCHEDULING ===');
-  } catch (error) {
-    console.error('Error scheduling reminder:', error);
-  }
-}
+    debugLogger.log(`Trigger time: ${new Date(triggerTimeMs).toLocaleString()}`);
+    debugLogger.log(`Time until trigger: ${Math.round((triggerTimeMs - now) / 1000 / 60 / 60 / 24)} days`);
 
-// Test function for immediate notification (for testing purposes)
-export async function testNotificationInSeconds(seconds: number = 5, product: string = 'Test Item') {
-  try {
-    console.log('=== TEST NOTIFICATION CALLED ===');
-    console.log('Seconds:', seconds);
-    console.log('Product:', product);
-    
-    // Check if we're in Expo Go (notifications won't work)
-    const isExpoGo = __DEV__ && !Constants.appOwnership;
-    console.log('Is Expo Go:', isExpoGo);
-    console.log('__DEV__:', __DEV__);
-    console.log('Constants.appOwnership:', Constants.appOwnership);
-    
-    if (isExpoGo) {
-      // In Expo Go, just show an alert explaining the limitation
-      alert(`🚀 Notification Test\n\nIn Expo Go, notifications don't work, but this would normally:\n\n• Schedule a notification for "${product}"\n• Show in ${seconds} seconds\n• With title: "🛒 Grocery Reminder Test"\n\nTo test real notifications, you need a development build.`);
-      return true;
+    if (triggerTimeMs <= now) {
+      debugLogger.log('❌ Trigger time is in the past, not scheduling');
+      return;
     }
 
-    // Request permissions first
-    const { status } = await Notifications.requestPermissionsAsync();
-    console.log('Permission status:', status);
+    // Cancel any existing notification for this product
+    const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+    const existingNotification = scheduled.find(n => 
+      n.content.data?.product === reminder.product
+    );
     
-    if (status !== 'granted') {
-      alert('Notification permissions not granted!');
-      return false;
+    if (existingNotification) {
+      debugLogger.log(`🗑️ Cancelling existing notification: ${existingNotification.identifier}`);
+      await Notifications.cancelScheduledNotificationAsync(existingNotification.identifier);
     }
 
-    const triggerDate = new Date(Date.now() + seconds * 1000);
-    console.log('Scheduling for:', triggerDate);
-    
-    const result = await Notifications.scheduleNotificationAsync({
+    // Schedule new notification
+    const notificationId = await Notifications.scheduleNotificationAsync({
       content: {
-        title: '🛒 Grocery Reminder Test',
-        body: `Test notification for ${product} - This would normally remind you to buy this item!`,
-        data: { product: product, isTest: true },
+        title: '🛒 Grocery Reminder',
+        body: `Time to buy ${reminder.product}! You purchased ${quantityPurchased} ${reminder.unit} ${days} days ago.`,
+        data: { 
+          product: reminder.product,
+          quantity: quantityPurchased,
+          unit: reminder.unit,
+          intervalDays: days
+        },
       },
-      trigger: { type: 'date' as any, date: triggerDate, repeats: false },
-    });
-    
-    console.log('Notification scheduled result:', result);
-    return true;
-  } catch (error) {
-    console.error('Test notification failed:', error);
-    return false;
-  }
-}
-
-// Function to test immediate notification (for debugging)
-export async function testImmediateNotification() {
-  try {
-    console.log('=== IMMEDIATE NOTIFICATION TEST ===');
-    
-    // Check permissions
-    const { status } = await Notifications.requestPermissionsAsync();
-    console.log('Permission status:', status);
-    
-    if (status !== 'granted') {
-      console.error('Permissions not granted');
-      return false;
-    }
-
-    // Schedule notification for 5 seconds from now
-    const result = await Notifications.scheduleNotificationAsync({
-      content: {
-        title: 'Debug Test',
-        body: 'This is a debug notification',
-        data: { debug: true },
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.DATE,
+        date: new Date(triggerTimeMs),
       },
-      trigger: { type: 'date' as any, date: new Date(Date.now() + 5000), repeats: false },
     });
-    
-    console.log('Debug notification scheduled:', result);
-    alert('Debug notification scheduled for 5 seconds from now');
-    return true;
+
+    debugLogger.log(`✅ Notification scheduled with ID: ${notificationId}`);
+    debugLogger.log('=== END SCHEDULING ===');
+
   } catch (error) {
-    console.error('Debug notification failed:', error);
-    return false;
+    debugLogger.log(`❌ Error scheduling notification: ${error}`);
+    console.error('Error scheduling notification:', error);
   }
 }

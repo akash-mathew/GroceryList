@@ -4,7 +4,6 @@ import { useGrocery } from '../context/GroceryContext';
 import { subMonths, isWithinInterval, parseISO } from 'date-fns';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { BarChart } from 'react-native-chart-kit';
-import ErrorBoundary from '../components/ErrorBoundary';
 
 const APP_BG = '#6fa36f'; // Medium-dark green background
 const CARD_BG = '#d8ecd8'; // Light green for cards/tiles
@@ -19,17 +18,8 @@ const TIME_FILTERS = [
   { key: 'custom', label: 'Custom Range' },
 ];
 
-// Safe console for production
-const safeConsole = {
-  error: (...args: any[]) => {
-    if (__DEV__) {
-      console.error(...args);
-    }
-  }
-};
-
-export default function InsightsScreen() {
-  const { items, purchasedItems } = useGrocery();
+export default function DashboardScreen() {
+  const { items, checkForUnpurchasedItems } = useGrocery();
   const now = new Date();
   const [timeFilter, setTimeFilter] = useState('week');
   const [customStart, setCustomStart] = useState<Date | null>(subMonths(now, 1));
@@ -38,6 +28,28 @@ export default function InsightsScreen() {
   const [showEndPicker, setShowEndPicker] = useState(false);
   const [activeTile, setActiveTile] = useState<'item' | 'shop'>('item');
   const [selectedUnit, setSelectedUnit] = useState<'kg' | 'liter' | 'piece'>('kg');
+
+  const handleTestUnpurchasedReminder = () => {
+    Alert.alert(
+      'Test Unpurchased Items Check',
+      'This will check for unpurchased items from past dates and send reminders.',
+      [
+        { text: 'Cancel', style: 'cancel' },
+        {
+          text: 'Run Check',
+          onPress: async () => {
+            try {
+              await checkForUnpurchasedItems();
+              Alert.alert('Success', 'Unpurchased items check completed. Check your notifications!');
+            } catch (error) {
+              Alert.alert('Error', 'Failed to check for unpurchased items');
+              console.error(error);
+            }
+          },
+        },
+      ]
+    );
+  };
 
   // Validation
   const isCustomInvalid = timeFilter === 'custom' && (
@@ -53,11 +65,9 @@ export default function InsightsScreen() {
     }
   };
 
-  // Defensive filter: only valid purchased items
+  // Defensive filter: only valid items
   const validItems = Array.isArray(items)
     ? items.filter(item => {
-        // Only include purchased items
-        if (!purchasedItems[item.id] || purchasedItems[item.id] === 0) return false;
         // Defensive checks for required fields
         if (!item || typeof item !== 'object') return false;
         if (!item.name || typeof item.name !== 'string' || item.name.trim() === '') return false;
@@ -98,156 +108,43 @@ export default function InsightsScreen() {
 
   // --- Grocery Item Analytics ---
   const itemCountData = useMemo(() => {
-    try {
-      if (!Array.isArray(filteredItems) || filteredItems.length === 0) {
-        return { labels: [], values: [] };
-      }
-      const counts: Record<string, number> = {};
-      filteredItems.forEach(item => {
-        if (!item || typeof item !== 'object') return;
-        const name = item.name && item.name.trim() !== '' ? item.name : 'Unnamed';
-        counts[name] = (counts[name] || 0) + 1;
-      });
-      const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 10);
-      return {
-        labels: sorted.map(([name]) => name.length > 12 ? name.slice(0, 12) + '…' : name),
-        values: sorted.map(([, count]) => count),
-      };
-    } catch (error) {
-      safeConsole.error('Error in itemCountData:', error);
-      return { labels: [], values: [] };
-    }
+    const counts: Record<string, number> = {};
+    filteredItems.forEach(item => {
+      const name = item.name && item.name.trim() !== '' ? item.name : 'Unnamed';
+      counts[name] = (counts[name] || 0) + 1;
+    });
+    const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 10);
+    return {
+      labels: sorted.map(([name]) => name.length > 12 ? name.slice(0, 12) + '…' : name),
+      values: sorted.map(([, count]) => count),
+    };
   }, [filteredItems]);
   // Total quantity bought per item (selectable unit)
   const itemQtyData = useMemo(() => {
-    try {
-      if (!Array.isArray(filteredItems) || filteredItems.length === 0) {
-        return { labels: [], values: [] };
-      }
-      const qtys: Record<string, number> = {};
-      filteredItems.filter(item => item && item.unit === selectedUnit).forEach(item => {
-        if (!item || typeof item !== 'object') return;
-        const name = item.name && item.name.trim() !== '' ? item.name : 'Unnamed';
-        const quantity = Number(item.quantity);
-        if (!isNaN(quantity)) {
-          qtys[name] = (qtys[name] || 0) + quantity;
-        }
-      });
-      const sorted = Object.entries(qtys).sort((a, b) => b[1] - a[1]).slice(0, 10);
-      return {
-        labels: sorted.map(([name]) => name.length > 12 ? name.slice(0, 12) + '…' : name),
-        values: sorted.map(([, qty]) => qty),
-      };
-    } catch (error) {
-      safeConsole.error('Error in itemQtyData:', error);
-      return { labels: [], values: [] };
-    }
+    const qtys: Record<string, number> = {};
+    filteredItems.filter(item => item.unit === selectedUnit).forEach(item => {
+      const name = item.name && item.name.trim() !== '' ? item.name : 'Unnamed';
+      qtys[name] = (qtys[name] || 0) + Number(item.quantity);
+    });
+    const sorted = Object.entries(qtys).sort((a, b) => b[1] - a[1]).slice(0, 10);
+    return {
+      labels: sorted.map(([name]) => name.length > 12 ? name.slice(0, 12) + '…' : name),
+      values: sorted.map(([, qty]) => qty),
+    };
   }, [filteredItems, selectedUnit]);
 
   // --- Grocery Shop Analytics ---
   const shopCountData = useMemo(() => {
-    try {
-      if (!Array.isArray(filteredItems) || filteredItems.length === 0) {
-        return { labels: [], values: [] };
-      }
-      const counts: Record<string, number> = {};
-      filteredItems.forEach(item => {
-        if (!item || typeof item !== 'object') return;
-        if (item.shop && typeof item.shop === 'string' && item.shop.trim() !== '') {
-          counts[item.shop] = (counts[item.shop] || 0) + 1;
-        }
-      });
-      const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 10);
-      return {
-        labels: sorted.map(([name]) => name.length > 12 ? name.slice(0, 12) + '…' : name),
-        values: sorted.map(([, count]) => count),
-      };
-    } catch (error) {
-      safeConsole.error('Error in shopCountData:', error);
-      return { labels: [], values: [] };
-    }
-  }, [filteredItems]);
-
-  // --- Unpurchased Items Analytics ---
-  // Get all items in the time range, regardless of purchase status
-  const allFilteredItems = useMemo(() => {
-    if (!Array.isArray(items)) return [];
-    const allValidItems = items.filter(item => {
-      // Defensive checks for required fields
-      if (!item || typeof item !== 'object') return false;
-      if (!item.name || typeof item.name !== 'string' || item.name.trim() === '') return false;
-      if (!item.date || typeof item.date !== 'string') return false;
-      if (isNaN(Number(item.quantity))) return false;
-      // Date must be valid
-      const d = safeParseDate(item.date);
-      if (!d || isNaN(d.getTime())) return false;
-      return true;
+    const counts: Record<string, number> = {};
+    filteredItems.forEach(item => {
+      if (item.shop) counts[item.shop] = (counts[item.shop] || 0) + 1;
     });
-
-    // Apply time filter
-    if (timeFilter === 'custom' && customStart && customEnd && !isCustomInvalid) {
-      return allValidItems.filter(item => {
-        const d = safeParseDate(item.date);
-        return d && isWithinInterval(d, { start: customStart, end: customEnd });
-      });
-    }
-    if (timeFilter === 'week') {
-      const fromDate = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000);
-      return allValidItems.filter(item => {
-        const d = safeParseDate(item.date);
-        return d && isWithinInterval(d, { start: fromDate, end: now });
-      });
-    }
-    if (timeFilter === 'month') {
-      const fromDate = subMonths(now, 1);
-      return allValidItems.filter(item => {
-        const d = safeParseDate(item.date);
-        return d && isWithinInterval(d, { start: fromDate, end: now });
-      });
-    }
-    return allValidItems.filter(item => safeParseDate(item.date));
-  }, [items, timeFilter, customStart, customEnd, isCustomInvalid, now]);
-
-  const unpurchasedItems = useMemo(() => {
-    return allFilteredItems.filter(item => !purchasedItems[item.id] || purchasedItems[item.id] === 0);
-  }, [allFilteredItems, purchasedItems]);
-
-  const unpurchasedItemsData = useMemo(() => {
-    try {
-      if (!Array.isArray(unpurchasedItems) || unpurchasedItems.length === 0) {
-        return { labels: [], values: [] };
-      }
-      const counts: Record<string, number> = {};
-      unpurchasedItems.forEach(item => {
-        if (!item || typeof item !== 'object') return;
-        const name = item.name && item.name.trim() !== '' ? item.name : 'Unnamed';
-        counts[name] = (counts[name] || 0) + 1;
-      });
-      const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 10);
-      return {
-        labels: sorted.map(([name]) => name.length > 12 ? name.slice(0, 12) + '…' : name),
-        values: sorted.map(([, count]) => count),
-      };
-    } catch (error) {
-      safeConsole.error('Error in unpurchasedItemsData:', error);
-      return { labels: [], values: [] };
-    }
-  }, [unpurchasedItems]);
-
-  // Purchase rate metrics
-  const purchaseMetrics = useMemo(() => {
-    const totalItems = allFilteredItems.length;
-    const purchasedCount = filteredItems.length;
-    const unpurchasedCount = unpurchasedItems.length;
-    const purchaseRate = totalItems > 0 ? Math.round((purchasedCount / totalItems) * 100) : 0;
-    
+    const sorted = Object.entries(counts).sort((a, b) => b[1] - a[1]).slice(0, 10);
     return {
-      totalItems,
-      purchasedCount,
-      unpurchasedCount,
-      purchaseRate
+      labels: sorted.map(([name]) => name.length > 12 ? name.slice(0, 12) + '…' : name),
+      values: sorted.map(([, count]) => count),
     };
-  }, [allFilteredItems.length, filteredItems.length, unpurchasedItems.length]);
+  }, [filteredItems]);
 
   // --- Render ---
   return (
@@ -264,19 +161,24 @@ export default function InsightsScreen() {
             </TouchableOpacity>
           ))}
         </View>
+        
+        {/* Test Button for Unpurchased Items Check */}
+        <TouchableOpacity 
+          style={[styles.filterBtn, { backgroundColor: '#FF6B35', marginTop: 8, alignSelf: 'center' }]} 
+          onPress={handleTestUnpurchasedReminder}
+        >
+          <Text style={[styles.filterTextActive, { color: '#fff' }]}>Test Unpurchased Check</Text>
+        </TouchableOpacity>
+        
         {/* Custom Range Pickers */}
         {timeFilter === 'custom' && (
           <View style={styles.customRangeRow}>
             <TouchableOpacity onPress={() => setShowStartPicker(true)} style={styles.customDateBtn}>
-              <Text style={styles.customDateText}>
-                {customStart ? customStart.toISOString().slice(0, 10) : 'Start'}
-              </Text>
+              <Text style={styles.customDateText}>{customStart ? customStart.toISOString().slice(0, 10) : 'Start'}</Text>
             </TouchableOpacity>
             <Text style={{ marginHorizontal: 4 }}>to</Text>
             <TouchableOpacity onPress={() => setShowEndPicker(true)} style={styles.customDateBtn}>
-              <Text style={styles.customDateText}>
-                {customEnd ? customEnd.toISOString().slice(0, 10) : 'End'}
-              </Text>
+              <Text style={styles.customDateText}>{customEnd ? customEnd.toISOString().slice(0, 10) : 'End'}</Text>
             </TouchableOpacity>
             {isCustomInvalid && (
               <Text style={styles.errorText}>Start date must be before end date.</Text>
@@ -308,198 +210,81 @@ export default function InsightsScreen() {
         {/* Tiles */}
         <View style={styles.tileSwitchRow}>
           <TouchableOpacity style={[styles.tileSwitch, activeTile === 'item' && styles.tileSwitchActive]} onPress={() => setActiveTile('item')}>
-            <Text style={activeTile === 'item' ? styles.tileSwitchTextActive : styles.tileSwitchText}>
-              Grocery Item
-            </Text>
+            <Text style={activeTile === 'item' ? styles.tileSwitchTextActive : styles.tileSwitchText}>Grocery Item</Text>
           </TouchableOpacity>
           <TouchableOpacity style={[styles.tileSwitch, activeTile === 'shop' && styles.tileSwitchActive]} onPress={() => setActiveTile('shop')}>
-            <Text style={activeTile === 'shop' ? styles.tileSwitchTextActive : styles.tileSwitchText}>
-              Grocery Shop
-            </Text>
+            <Text style={activeTile === 'shop' ? styles.tileSwitchTextActive : styles.tileSwitchText}>Grocery Shop</Text>
           </TouchableOpacity>
         </View>
         {/* Analytics Visuals */}
         {activeTile === 'item' && (
           <View style={styles.analyticsBox}>
             <Text style={styles.analyticsTitle}>Number of Times Bought (Top 10)</Text>
-            {(() => {
-              try {
-                if (itemCountData?.labels?.length > 0 && itemCountData?.values?.length > 0) {
-                  return (
-                    <BarChart
-                      data={{ 
-                        labels: itemCountData.labels, 
-                        datasets: [{ data: itemCountData.values }] 
-                      }}
-                      width={Dimensions.get('window').width - 32}
-                      height={200}
-                      yAxisLabel={''}
-                      yAxisSuffix={''}
-                      chartConfig={chartConfig}
-                      style={styles.chart}
-                      fromZero
-                      showValuesOnTopOfBars
-                      withInnerLines
-                      withVerticalLabels={true}
-                      withHorizontalLabels={false}
-                    />
-                  );
-                } else {
-                  return <Text style={styles.emptyText}>No data for selected range.</Text>;
-                }
-              } catch (error) {
-                return <Text style={styles.emptyText}>Chart unavailable.</Text>;
-              }
-            })()}
+            {itemCountData.labels.length > 0 ? (
+              <BarChart
+                data={{ labels: itemCountData.labels, datasets: [{ data: itemCountData.values }] }}
+                width={Dimensions.get('window').width - 32}
+                height={200}
+                yAxisLabel={''}
+                yAxisSuffix={''}
+                chartConfig={chartConfig}
+                style={styles.chart}
+                fromZero
+                showValuesOnTopOfBars
+                withInnerLines
+                withVerticalLabels={true} // Show x-axis labels
+                withHorizontalLabels={false} // Hide y-axis labels
+              />
+            ) : <Text style={styles.emptyText}>No data for selected range.</Text>}
             <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8, marginBottom: 4 }}>
               <Text style={styles.analyticsTitle}>Total Quantity Bought</Text>
               <View style={{ marginLeft: 12, flexDirection: 'row', backgroundColor: ACCENT, borderRadius: 8, borderWidth: 1, borderColor: PRIMARY, overflow: 'hidden' }}>
                 {['kg', 'liter', 'piece'].map(u => (
                   <TouchableOpacity key={u} style={{ paddingVertical: 4, paddingHorizontal: 12, backgroundColor: selectedUnit === u ? PRIMARY : 'transparent' }} onPress={() => setSelectedUnit(u as any)}>
-                    <Text style={{ color: selectedUnit === u ? '#fff' : PRIMARY, fontWeight: 'bold' }}>
-                      {u}
-                    </Text>
+                    <Text style={{ color: selectedUnit === u ? '#fff' : PRIMARY, fontWeight: 'bold' }}>{u}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
             </View>
-            {(() => {
-              try {
-                if (itemQtyData?.labels?.length > 0 && itemQtyData?.values?.length > 0) {
-                  return (
-                    <BarChart
-                      data={{ 
-                        labels: itemQtyData.labels, 
-                        datasets: [{ data: itemQtyData.values }] 
-                      }}
-                      width={Dimensions.get('window').width - 32}
-                      height={200}
-                      yAxisLabel={''}
-                      yAxisSuffix={selectedUnit}
-                      chartConfig={chartConfig}
-                      style={styles.chart}
-                      fromZero
-                      showValuesOnTopOfBars
-                      withInnerLines
-                      withVerticalLabels={true}
-                      withHorizontalLabels={false}
-                    />
-                  );
-                } else {
-                  return <Text style={styles.emptyText}>No data for selected range.</Text>;
-                }
-              } catch (error) {
-                return <Text style={styles.emptyText}>Chart unavailable.</Text>;
-              }
-            })()}
+            {itemQtyData.labels.length > 0 ? (
+              <BarChart
+                data={{ labels: itemQtyData.labels, datasets: [{ data: itemQtyData.values }] }}
+                width={Dimensions.get('window').width - 32}
+                height={200}
+                yAxisLabel={''}
+                yAxisSuffix={selectedUnit}
+                chartConfig={chartConfig}
+                style={styles.chart}
+                fromZero
+                showValuesOnTopOfBars
+                withInnerLines
+                withVerticalLabels={true} // Show x-axis labels
+                withHorizontalLabels={false} // Hide y-axis labels
+              />
+            ) : <Text style={styles.emptyText}>No data for selected range.</Text>}
           </View>
         )}
         {activeTile === 'shop' && (
           <View style={styles.analyticsBox}>
             <Text style={styles.analyticsTitle}>Number of Purchases per Shop (Top 10)</Text>
-            {(() => {
-              try {
-                if (shopCountData?.labels?.length > 0 && shopCountData?.values?.length > 0) {
-                  return (
-                    <BarChart
-                      data={{ 
-                        labels: shopCountData.labels, 
-                        datasets: [{ data: shopCountData.values }] 
-                      }}
-                      width={Dimensions.get('window').width - 32}
-                      height={200}
-                      yAxisLabel={''}
-                      yAxisSuffix={''}
-                      chartConfig={chartConfig}
-                      style={styles.chart}
-                      fromZero
-                      showValuesOnTopOfBars
-                      withInnerLines
-                      withVerticalLabels={true}
-                      withHorizontalLabels={false}
-                    />
-                  );
-                } else {
-                  return <Text style={styles.emptyText}>No data for selected range.</Text>;
-                }
-              } catch (error) {
-                return <Text style={styles.emptyText}>Chart unavailable.</Text>;
-              }
-            })()}
+            {shopCountData.labels.length > 0 ? (
+              <BarChart
+                data={{ labels: shopCountData.labels, datasets: [{ data: shopCountData.values }] }}
+                width={Dimensions.get('window').width - 32}
+                height={200}
+                yAxisLabel={''}
+                yAxisSuffix={''}
+                chartConfig={chartConfig}
+                style={styles.chart}
+                fromZero
+                showValuesOnTopOfBars
+                withInnerLines
+                withVerticalLabels={true} // Show x-axis labels
+                withHorizontalLabels={false} // Hide y-axis labels
+              />
+            ) : <Text style={styles.emptyText}>No data for selected range.</Text>}
           </View>
         )}
-        
-        {/* Purchase Insights Section */}
-        <View style={styles.analyticsBox}>
-          <Text style={styles.analyticsTitle}>Shopping List Insights</Text>
-          
-          {/* Purchase Rate Overview */}
-          <View style={styles.metricsRow}>
-            <View style={styles.metricCard}>
-              <Text style={styles.metricValue}>{purchaseMetrics.purchaseRate}%</Text>
-              <Text style={styles.metricLabel}>Purchase Rate</Text>
-            </View>
-            <View style={styles.metricCard}>
-              <Text style={styles.metricValue}>{purchaseMetrics.purchasedCount}</Text>
-              <Text style={styles.metricLabel}>Items Bought</Text>
-            </View>
-            <View style={styles.metricCard}>
-              <Text style={styles.metricValue}>{purchaseMetrics.unpurchasedCount}</Text>
-              <Text style={styles.metricLabel}>Items Skipped</Text>
-            </View>
-          </View>
-
-          {/* Unpurchased Items Chart */}
-          {unpurchasedItems.length > 0 && (
-            <>
-              <Text style={[styles.analyticsTitle, { marginTop: 20, fontSize: 16 }]}>
-                Most Frequently Added but Not Bought
-              </Text>
-              {(() => {
-                try {
-                  if (unpurchasedItemsData?.labels?.length > 0 && unpurchasedItemsData?.values?.length > 0) {
-                    return (
-                      <BarChart
-                        data={{ 
-                          labels: unpurchasedItemsData.labels, 
-                          datasets: [{ data: unpurchasedItemsData.values }] 
-                        }}
-                        width={Dimensions.get('window').width - 32}
-                        height={200}
-                        yAxisLabel={''}
-                        yAxisSuffix={''}
-                        chartConfig={{
-                          backgroundColor: '#ffffff',
-                          backgroundGradientFrom: '#ffffff',
-                          backgroundGradientTo: '#ffffff',
-                          decimalPlaces: 0,
-                          color: (opacity = 1) => `rgba(231, 76, 60, ${opacity})`, // Red for unpurchased items
-                          labelColor: (opacity = 1) => `rgba(0, 0, 0, ${opacity})`,
-                          style: { borderRadius: 16 },
-                          propsForBackgroundLines: { strokeDasharray: '' },
-                        }}
-                        style={styles.chart}
-                        fromZero
-                        showValuesOnTopOfBars
-                        withInnerLines
-                        withVerticalLabels={true}
-                        withHorizontalLabels={false}
-                      />
-                    );
-                  } else {
-                    return <Text style={styles.emptyText}>Great! You bought everything you planned.</Text>;
-                  }
-                } catch (error) {
-                  return <Text style={styles.emptyText}>Chart unavailable.</Text>;
-                }
-              })()}
-            </>
-          )}
-          
-          {unpurchasedItems.length === 0 && (
-            <Text style={styles.emptyText}>🎉 Perfect! You bought everything on your list!</Text>
-          )}
-        </View>
       </View>
     </ScrollView>
   );
@@ -528,10 +313,6 @@ const styles = StyleSheet.create({
   chart: { borderRadius: 16, marginBottom: 16, backgroundColor: ACCENT },
   emptyText: { textAlign: 'center', color: '#999', padding: 16, fontSize: 16 },
   infoText: { color: PRIMARY, fontSize: 13, textAlign: 'center', marginTop: 4 },
-  metricsRow: { flexDirection: 'row', justifyContent: 'space-between', marginBottom: 16 },
-  metricCard: { flex: 1, backgroundColor: '#fff', borderRadius: 12, padding: 12, marginHorizontal: 4, alignItems: 'center', elevation: 2 },
-  metricValue: { fontSize: 24, fontWeight: 'bold', color: PRIMARY, marginBottom: 4 },
-  metricLabel: { fontSize: 12, color: '#666', textAlign: 'center' },
 });
 
 const chartConfig = {

@@ -1,14 +1,9 @@
 {
   "compilerOptions": {
-    "jsx": "react-native",
-    "target": "es2017",
-    "lib": ["es2017", "dom"],
-    "esModuleInterop": true,
-    "allowSyntheticDefaultImports": true,
-    "moduleResolution": "nodenext",
-    "module": "NodeNext",
-    "types": ["react-native", "expo", "@expo/vector-icons"],
-    "skipLibCheck": true
+    "jsx": "react-native"
   },
-  "extends": "expo/tsconfig.base"
+  "extends": "expo/tsconfig.base",
+  "exclude": [
+    "GroceryList/**/*"
+  ]
 }
