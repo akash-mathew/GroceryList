@@ -19,13 +19,17 @@ export default function HistoryScreen({ navigation }: any) {
         data={historyDates}
         keyExtractor={date => date}
         numColumns={2}
-        contentContainerStyle={{ padding: 8 }}
+        contentContainerStyle={{ padding: 8, flexGrow: 1, justifyContent: 'center', paddingBottom: 120 }}
         renderItem={({ item }) => (
           <TouchableOpacity style={styles.tile} onPress={() => navigation.navigate('GroceryList', { date: item })}>
             <Text style={styles.tileText}>{item}</Text>
           </TouchableOpacity>
         )}
-        ListEmptyComponent={<Text style={styles.emptyText}>No history yet.</Text>}
+        ListEmptyComponent={() => (
+          <View style={{ padding: 20 }}>
+            <Text style={styles.emptyText}>No Lists yet. Create your first grocery list!</Text>
+          </View>
+        )}
       />
       <TouchableOpacity style={styles.addBtn} onPress={() => setCalendarVisible(true)}>
         <Text style={styles.addBtnText}>Add New List</Text>
@@ -59,5 +63,5 @@ const styles = StyleSheet.create({
   tileText: { fontSize: 18, color: PRIMARY, fontWeight: 'bold' },
   addBtn: { backgroundColor: PRIMARY, borderRadius: 10, paddingVertical: 16, alignItems: 'center', marginTop: 24 },
   addBtnText: { color: '#fff', fontWeight: 'bold', fontSize: 18, letterSpacing: 1 },
-  emptyText: { color: '#888', textAlign: 'center', marginTop: 32, fontSize: 16 },
+  emptyText: { color: '#1F2937', textAlign: 'center', marginTop: 32, fontSize: 16 },
 });

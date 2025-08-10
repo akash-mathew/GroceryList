@@ -1,9 +1,9 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { View, Text, StyleSheet, Dimensions, TouchableOpacity, Platform, Alert, ScrollView } from 'react-native';
 import { useGrocery } from '../context/GroceryContext';
 import { subMonths, isWithinInterval, parseISO } from 'date-fns';
 import DateTimePicker from '@react-native-community/datetimepicker';
-import { BarChart } from 'react-native-chart-kit';
+import { BarChart, PieChart } from 'react-native-chart-kit';
 
 const APP_BG = '#6fa36f'; // Medium-dark green background
 const CARD_BG = '#d8ecd8'; // Light green for cards/tiles
@@ -18,9 +18,14 @@ const TIME_FILTERS = [
   { key: 'custom', label: 'Custom Range' },
 ];
 
-export default function DashboardScreen() {
-  const { items, checkForUnpurchasedItems } = useGrocery();
+interface DashboardScreenProps {
+  onAddRef?: (elementId: string, ref: any) => void;
+}
+
+export default function DashboardScreen({ onAddRef }: DashboardScreenProps) {
+  const { items, checkForUnpurchasedItems, purchasedItems } = useGrocery();
   const now = new Date();
+  const [mainSection, setMainSection] = useState<'breakdown' | 'insights'>('insights');
   const [timeFilter, setTimeFilter] = useState('week');
   const [customStart, setCustomStart] = useState<Date | null>(subMonths(now, 1));
   const [customEnd, setCustomEnd] = useState<Date | null>(now);
@@ -29,34 +34,10 @@ export default function DashboardScreen() {
   const [activeTile, setActiveTile] = useState<'item' | 'shop'>('item');
   const [selectedUnit, setSelectedUnit] = useState<'kg' | 'liter' | 'piece'>('kg');
 
-  const handleTestUnpurchasedReminder = () => {
-    Alert.alert(
-      'Test Unpurchased Items Check',
-      'This will check for unpurchased items from past dates and send reminders.',
-      [
-        { text: 'Cancel', style: 'cancel' },
-        {
-          text: 'Run Check',
-          onPress: async () => {
-            try {
-              await checkForUnpurchasedItems();
-              Alert.alert('Success', 'Unpurchased items check completed. Check your notifications!');
-            } catch (error) {
-              Alert.alert('Error', 'Failed to check for unpurchased items');
-              console.error(error);
-            }
-          },
-        },
-      ]
-    );
-  };
-
-  // Validation
   const isCustomInvalid = timeFilter === 'custom' && (
     !customStart || !customEnd || customStart > customEnd
   );
 
-  // Safe date parsing
   const safeParseDate = (dateStr: string) => {
     try {
       return parseISO(dateStr);
@@ -65,22 +46,18 @@ export default function DashboardScreen() {
     }
   };
 
-  // Defensive filter: only valid items
   const validItems = Array.isArray(items)
     ? items.filter(item => {
-        // Defensive checks for required fields
         if (!item || typeof item !== 'object') return false;
         if (!item.name || typeof item.name !== 'string' || item.name.trim() === '') return false;
         if (!item.date || typeof item.date !== 'string') return false;
         if (isNaN(Number(item.quantity))) return false;
-        // Date must be valid
         const d = safeParseDate(item.date);
         if (!d || isNaN(d.getTime())) return false;
         return true;
       })
     : [];
 
-  // Filter items by time range
   const filteredItems = useMemo(() => {
     if (!validItems || !Array.isArray(validItems)) return [];
     if (timeFilter === 'custom' && customStart && customEnd && !isCustomInvalid) {
@@ -105,6 +82,15 @@ export default function DashboardScreen() {
     }
     return validItems.filter(item => safeParseDate(item.date));
   }, [validItems, timeFilter, customStart, customEnd, isCustomInvalid]);
+
+  // Add: default Insights range = last 6 months
+  const insightsItems = useMemo(() => {
+    const fromDate = subMonths(now, 6);
+    return validItems.filter(item => {
+      const d = safeParseDate(item.date);
+      return d && isWithinInterval(d, { start: fromDate, end: now });
+    });
+  }, [validItems]);
 
   // --- Grocery Item Analytics ---
   const itemCountData = useMemo(() => {
@@ -146,144 +132,246 @@ export default function DashboardScreen() {
     };
   }, [filteredItems]);
 
-  // --- Render ---
+  // --- Insights data over last 6 months ---
+  const insightsPurchasedVsUnpurchased = useMemo(() => {
+    const total = insightsItems.length;
+    let purchased = 0;
+    insightsItems.forEach(item => {
+      if (purchasedItems[item.name]) purchased += 1;
+    });
+    const unpurchased = total - purchased;
+    return { total, purchased, unpurchased, missPct: total ? Math.round((unpurchased / total) * 100) : 0 };
+  }, [insightsItems, purchasedItems]);
+
+  const insightsMonthlyAggregates = useMemo(() => {
+    const map: Record<string, number> = {};
+    insightsItems.forEach(i => {
+      const d = safeParseDate(i.date);
+      if (!d) return;
+      const key = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+      map[key] = (map[key] || 0) + 1;
+    });
+    const keys = Object.keys(map).sort();
+    return keys.map(k => ({ key: k, total: map[k] }));
+  }, [insightsItems]);
+
+  // Expose an API for the tutorial to control this screen
+  useEffect(() => {
+    if (onAddRef) {
+      onAddRef('analytics-api', {
+        setSection: (section: 'breakdown' | 'insights') => setMainSection(section),
+        getSection: () => mainSection,
+      });
+    }
+  }, [onAddRef, mainSection]);
+
   return (
     <ScrollView style={{ flex: 1, backgroundColor: APP_BG }} contentContainerStyle={{ paddingBottom: 32 }}>
       <View style={styles.container}>
-        <View style={[styles.filterRow, { marginTop: 32 }]}>
-          {TIME_FILTERS.map(f => (
-            <TouchableOpacity
-              key={f.key}
-              style={[styles.filterBtn, timeFilter === f.key && styles.filterBtnActive]}
-              onPress={() => setTimeFilter(f.key)}
+        {/* Floating tabs for main sections */}
+        <View style={styles.sectionSwitchRow}>
+          <TouchableOpacity style={[styles.sectionSwitch, mainSection === 'breakdown' && styles.sectionSwitchActive]} onPress={() => setMainSection('breakdown')}>
+            <Text style={mainSection === 'breakdown' ? styles.tileSwitchTextActive : styles.tileSwitchText}>Breakdown</Text>
+          </TouchableOpacity>
+          <TouchableOpacity style={[styles.sectionSwitch, mainSection === 'insights' && styles.sectionSwitchActive]} onPress={() => setMainSection('insights')}>
+            <Text style={mainSection === 'insights' ? styles.tileSwitchTextActive : styles.tileSwitchText}>Insights</Text>
+          </TouchableOpacity>
+        </View>
+        
+        {/* Show filters only for Breakdown */}
+        {mainSection === 'breakdown' && (
+          <>
+            {/* Time filters visible for both sections */}
+            <View 
+              ref={ref => onAddRef && onAddRef('time-filter', ref)}
+              style={[styles.filterRow, { marginTop: 8 }]}
             >
-              <Text style={timeFilter === f.key ? styles.filterTextActive : styles.filterText}>{f.label}</Text>
-            </TouchableOpacity>
-          ))}
-        </View>
-        
-        {/* Test Button for Unpurchased Items Check */}
-        <TouchableOpacity 
-          style={[styles.filterBtn, { backgroundColor: '#FF6B35', marginTop: 8, alignSelf: 'center' }]} 
-          onPress={handleTestUnpurchasedReminder}
-        >
-          <Text style={[styles.filterTextActive, { color: '#fff' }]}>Test Unpurchased Check</Text>
-        </TouchableOpacity>
-        
-        {/* Custom Range Pickers */}
-        {timeFilter === 'custom' && (
-          <View style={styles.customRangeRow}>
-            <TouchableOpacity onPress={() => setShowStartPicker(true)} style={styles.customDateBtn}>
-              <Text style={styles.customDateText}>{customStart ? customStart.toISOString().slice(0, 10) : 'Start'}</Text>
-            </TouchableOpacity>
-            <Text style={{ marginHorizontal: 4 }}>to</Text>
-            <TouchableOpacity onPress={() => setShowEndPicker(true)} style={styles.customDateBtn}>
-              <Text style={styles.customDateText}>{customEnd ? customEnd.toISOString().slice(0, 10) : 'End'}</Text>
-            </TouchableOpacity>
-            {isCustomInvalid && (
-              <Text style={styles.errorText}>Start date must be before end date.</Text>
-            )}
-          </View>
-        )}
-        {showStartPicker && (
-          <DateTimePicker
-            value={customStart || subMonths(now, 1)}
-            mode="date"
-            display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-            onChange={(_, date) => {
-              setShowStartPicker(false);
-              if (date) setCustomStart(date);
-            }}
-          />
-        )}
-        {showEndPicker && (
-          <DateTimePicker
-            value={customEnd || now}
-            mode="date"
-            display={Platform.OS === 'ios' ? 'spinner' : 'default'}
-            onChange={(_, date) => {
-              setShowEndPicker(false);
-              if (date) setCustomEnd(date);
-            }}
-          />
-        )}
-        {/* Tiles */}
-        <View style={styles.tileSwitchRow}>
-          <TouchableOpacity style={[styles.tileSwitch, activeTile === 'item' && styles.tileSwitchActive]} onPress={() => setActiveTile('item')}>
-            <Text style={activeTile === 'item' ? styles.tileSwitchTextActive : styles.tileSwitchText}>Grocery Item</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={[styles.tileSwitch, activeTile === 'shop' && styles.tileSwitchActive]} onPress={() => setActiveTile('shop')}>
-            <Text style={activeTile === 'shop' ? styles.tileSwitchTextActive : styles.tileSwitchText}>Grocery Shop</Text>
-          </TouchableOpacity>
-        </View>
-        {/* Analytics Visuals */}
-        {activeTile === 'item' && (
-          <View style={styles.analyticsBox}>
-            <Text style={styles.analyticsTitle}>Number of Times Bought (Top 10)</Text>
-            {itemCountData.labels.length > 0 ? (
-              <BarChart
-                data={{ labels: itemCountData.labels, datasets: [{ data: itemCountData.values }] }}
-                width={Dimensions.get('window').width - 32}
-                height={200}
-                yAxisLabel={''}
-                yAxisSuffix={''}
-                chartConfig={chartConfig}
-                style={styles.chart}
-                fromZero
-                showValuesOnTopOfBars
-                withInnerLines
-                withVerticalLabels={true} // Show x-axis labels
-                withHorizontalLabels={false} // Hide y-axis labels
-              />
-            ) : <Text style={styles.emptyText}>No data for selected range.</Text>}
-            <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8, marginBottom: 4 }}>
-              <Text style={styles.analyticsTitle}>Total Quantity Bought</Text>
-              <View style={{ marginLeft: 12, flexDirection: 'row', backgroundColor: ACCENT, borderRadius: 8, borderWidth: 1, borderColor: PRIMARY, overflow: 'hidden' }}>
-                {['kg', 'liter', 'piece'].map(u => (
-                  <TouchableOpacity key={u} style={{ paddingVertical: 4, paddingHorizontal: 12, backgroundColor: selectedUnit === u ? PRIMARY : 'transparent' }} onPress={() => setSelectedUnit(u as any)}>
-                    <Text style={{ color: selectedUnit === u ? '#fff' : PRIMARY, fontWeight: 'bold' }}>{u}</Text>
-                  </TouchableOpacity>
-                ))}
-              </View>
+              {TIME_FILTERS.map(f => (
+                <TouchableOpacity
+                  key={f.key}
+                  style={[styles.filterBtn, timeFilter === f.key && styles.filterBtnActive]}
+                  onPress={() => setTimeFilter(f.key)}
+                >
+                  <Text style={timeFilter === f.key ? styles.filterTextActive : styles.filterText}>{f.label}</Text>
+                </TouchableOpacity>
+              ))}
             </View>
-            {itemQtyData.labels.length > 0 ? (
-              <BarChart
-                data={{ labels: itemQtyData.labels, datasets: [{ data: itemQtyData.values }] }}
-                width={Dimensions.get('window').width - 32}
-                height={200}
-                yAxisLabel={''}
-                yAxisSuffix={selectedUnit}
-                chartConfig={chartConfig}
-                style={styles.chart}
-                fromZero
-                showValuesOnTopOfBars
-                withInnerLines
-                withVerticalLabels={true} // Show x-axis labels
-                withHorizontalLabels={false} // Hide y-axis labels
+
+            {timeFilter === 'custom' && (
+              <View style={styles.customRangeRow}>
+                <TouchableOpacity onPress={() => setShowStartPicker(true)} style={styles.customDateBtn}>
+                  <Text style={styles.customDateText}>{customStart ? customStart.toISOString().slice(0, 10) : 'Start'}</Text>
+                </TouchableOpacity>
+                <Text style={{ marginHorizontal: 4 }}>to</Text>
+                <TouchableOpacity onPress={() => setShowEndPicker(true)} style={styles.customDateBtn}>
+                  <Text style={styles.customDateText}>{customEnd ? customEnd.toISOString().slice(0, 10) : 'End'}</Text>
+                </TouchableOpacity>
+                {isCustomInvalid && (
+                  <Text style={styles.errorText}>Start date must be before end date.</Text>
+                )}
+              </View>
+            )}
+            {showStartPicker && (
+              <DateTimePicker
+                value={customStart || subMonths(now, 1)}
+                mode="date"
+                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                onChange={(_, date) => {
+                  setShowStartPicker(false);
+                  if (date) setCustomStart(date);
+                }}
               />
-            ) : <Text style={styles.emptyText}>No data for selected range.</Text>}
-          </View>
+            )}
+            {showEndPicker && (
+              <DateTimePicker
+                value={customEnd || now}
+                mode="date"
+                display={Platform.OS === 'ios' ? 'spinner' : 'default'}
+                onChange={(_, date) => {
+                  setShowEndPicker(false);
+                  if (date) setCustomEnd(date);
+                }}
+              />
+            )}
+          </>
         )}
-        {activeTile === 'shop' && (
-          <View style={styles.analyticsBox}>
-            <Text style={styles.analyticsTitle}>Number of Purchases per Shop (Top 10)</Text>
-            {shopCountData.labels.length > 0 ? (
-              <BarChart
-                data={{ labels: shopCountData.labels, datasets: [{ data: shopCountData.values }] }}
-                width={Dimensions.get('window').width - 32}
-                height={200}
-                yAxisLabel={''}
-                yAxisSuffix={''}
-                chartConfig={chartConfig}
-                style={styles.chart}
-                fromZero
-                showValuesOnTopOfBars
-                withInnerLines
-                withVerticalLabels={true} // Show x-axis labels
-                withHorizontalLabels={false} // Hide y-axis labels
-              />
-            ) : <Text style={styles.emptyText}>No data for selected range.</Text>}
-          </View>
+
+        {mainSection === 'breakdown' && (
+          <>
+            <View 
+              ref={ref => onAddRef && onAddRef('analytics-toggle', ref)}
+              style={styles.tileSwitchRow}
+            >
+              <TouchableOpacity style={[styles.tileSwitch, activeTile === 'item' && styles.tileSwitchActive]} onPress={() => setActiveTile('item')}>
+                <Text style={activeTile === 'item' ? styles.tileSwitchTextActive : styles.tileSwitchText}>Grocery Item</Text>
+              </TouchableOpacity>
+              <TouchableOpacity style={[styles.tileSwitch, activeTile === 'shop' && styles.tileSwitchActive]} onPress={() => setActiveTile('shop')}>
+                <Text style={activeTile === 'shop' ? styles.tileSwitchTextActive : styles.tileSwitchText}>Grocery Shop</Text>
+              </TouchableOpacity>
+            </View>
+
+            {activeTile === 'item' && (
+              <View 
+                ref={ref => onAddRef && onAddRef('charts', ref)}
+                style={styles.analyticsBox}
+              >
+                <Text style={styles.analyticsTitle}>Number of Times Bought (Top 10)</Text>
+                {itemCountData.labels.length > 0 ? (
+                  <BarChart
+                    data={{ labels: itemCountData.labels, datasets: [{ data: itemCountData.values }] }}
+                    width={Dimensions.get('window').width - 32}
+                    height={200}
+                    yAxisLabel={''}
+                    yAxisSuffix={''}
+                    chartConfig={chartConfig}
+                    style={styles.chart}
+                    fromZero
+                    showValuesOnTopOfBars
+                    withInnerLines
+                    withVerticalLabels={true}
+                    withHorizontalLabels={false}
+                  />
+                ) : <Text style={styles.emptyText}>No data for selected range.</Text>}
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8, marginBottom: 4 }}>
+                  <Text style={styles.analyticsTitle}>Total Quantity Bought</Text>
+                  <View style={{ marginLeft: 12, flexDirection: 'row', backgroundColor: ACCENT, borderRadius: 8, borderWidth: 1, borderColor: PRIMARY, overflow: 'hidden' }}>
+                    {['kg', 'liter', 'piece'].map(u => (
+                      <TouchableOpacity key={u} style={{ paddingVertical: 4, paddingHorizontal: 12, backgroundColor: selectedUnit === u ? PRIMARY : 'transparent' }} onPress={() => setSelectedUnit(u as any)}>
+                        <Text style={{ color: selectedUnit === u ? '#fff' : PRIMARY, fontWeight: 'bold' }}>{u}</Text>
+                      </TouchableOpacity>
+                    ))}
+                  </View>
+                </View>
+                {itemQtyData.labels.length > 0 ? (
+                  <BarChart
+                    data={{ labels: itemQtyData.labels, datasets: [{ data: itemQtyData.values }] }}
+                    width={Dimensions.get('window').width - 32}
+                    height={200}
+                    yAxisLabel={''}
+                    yAxisSuffix={selectedUnit}
+                    chartConfig={chartConfig}
+                    style={styles.chart}
+                    fromZero
+                    showValuesOnTopOfBars
+                    withInnerLines
+                    withVerticalLabels={true}
+                    withHorizontalLabels={false}
+                  />
+                ) : <Text style={styles.emptyText}>No data for selected range.</Text>}
+              </View>
+            )}
+
+            {activeTile === 'shop' && (
+              <View style={styles.analyticsBox}>
+                <Text style={styles.analyticsTitle}>Number of Purchases per Shop (Top 10)</Text>
+                {shopCountData.labels.length > 0 ? (
+                  <BarChart
+                    data={{ labels: shopCountData.labels, datasets: [{ data: shopCountData.values }] }}
+                    width={Dimensions.get('window').width - 32}
+                    height={200}
+                    yAxisLabel={''}
+                    yAxisSuffix={''}
+                    chartConfig={chartConfig}
+                    style={styles.chart}
+                    fromZero
+                    showValuesOnTopOfBars
+                    withInnerLines
+                    withVerticalLabels={true}
+                    withHorizontalLabels={false}
+                  />
+                ) : <Text style={styles.emptyText}>No data for selected range.</Text>}
+              </View>
+            )}
+          </>
+        )}
+
+        {mainSection === 'insights' && (
+          <>
+            <View style={styles.analyticsBox}>
+              <Text style={styles.analyticsTitle}>Purchase Analysis (Last 6 Months)</Text>
+              {insightsPurchasedVsUnpurchased.total > 0 ? (
+                <PieChart
+                  data={[
+                    { name: 'Purchased', population: insightsPurchasedVsUnpurchased.purchased, color: '#4CAF50', legendFontColor: PRIMARY, legendFontSize: 14 },
+                    { name: 'Unpurchased', population: insightsPurchasedVsUnpurchased.unpurchased, color: '#FF6B6B', legendFontColor: PRIMARY, legendFontSize: 14 },
+                  ]}
+                  width={Dimensions.get('window').width - 32}
+                  height={200}
+                  chartConfig={{ color: (o=1)=>`rgba(17,17,17,${o})` }}
+                  accessor="population"
+                  backgroundColor="transparent"
+                  paddingLeft="10"
+                />
+              ) : (
+                <Text style={styles.emptyText}>No data available</Text>
+              )}
+            </View>
+
+            <View style={styles.analyticsBox}>
+              <Text style={styles.analyticsTitle}>Shopping Activity by Month (Last 6 Months)</Text>
+              {insightsMonthlyAggregates.length > 0 ? (
+                <BarChart
+                  data={{
+                    labels: insightsMonthlyAggregates.map(m => m.key.slice(2)),
+                    datasets: [{ data: insightsMonthlyAggregates.map(m => m.total) }],
+                  }}
+                  width={Dimensions.get('window').width - 32}
+                  height={200}
+                  yAxisLabel={''}
+                  yAxisSuffix={''}
+                  chartConfig={chartConfig}
+                  style={styles.chart}
+                  fromZero
+                  showValuesOnTopOfBars
+                  withInnerLines
+                  withVerticalLabels
+                  withHorizontalLabels={false}
+                />
+              ) : (
+                <Text style={styles.emptyText}>No activity</Text>
+              )}
+            </View>
+          </>
         )}
       </View>
     </ScrollView>
@@ -303,6 +391,9 @@ const styles = StyleSheet.create({
   customDateBtn: { backgroundColor: CARD_BG, borderRadius: 8, paddingVertical: 6, paddingHorizontal: 10, borderWidth: 1, borderColor: BORDER, marginHorizontal: 2 },
   customDateText: { color: '#222', fontSize: 14 },
   errorText: { color: 'red', marginLeft: 8, fontSize: 13 },
+  sectionSwitchRow: { flexDirection: 'row', justifyContent: 'center', marginTop: 16, marginBottom: 8 },
+  sectionSwitch: { flex: 1, backgroundColor: ACCENT, borderRadius: 10, marginHorizontal: 6, paddingVertical: 10, alignItems: 'center' },
+  sectionSwitchActive: { backgroundColor: PRIMARY },
   tileSwitchRow: { flexDirection: 'row', justifyContent: 'center', marginBottom: 12 },
   tileSwitch: { flex: 1, backgroundColor: ACCENT, borderRadius: 10, marginHorizontal: 6, paddingVertical: 12, alignItems: 'center' },
   tileSwitchActive: { backgroundColor: PRIMARY },
